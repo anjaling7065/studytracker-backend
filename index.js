@@ -1,0 +1,85 @@
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import User from "./models/User.js";
+import authMiddleware from "./middleware/auth.js";
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+
+app.get("/", (req, res) => {
+  res.send("Backend is running perfectly ✅");
+});
+
+
+mongoose.connect("mongodb://127.0.0.1:27017/studyTracker")
+  .then(() => console.log("DB Connected"))
+  .catch(err => console.log(err));
+
+
+
+app.post("/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    const exist = await User.findOne({ email });
+    if (exist) return res.status(400).json({ message: "User already exists" });
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = new User({ name, email, password: hashed });
+    await user.save();
+
+    res.json({ message: "Registered successfully" });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+app.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "User not found" });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Wrong password" });
+
+    const token = jwt.sign({ id: user._id }, "secretkey123", {
+      expiresIn: "1d"
+    });
+
+    res.json({
+      token,
+      user: { name: user.name, email: user.email }
+    });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+
+app.get("/dashboard", authMiddleware, (req, res) => {
+  res.json({ message: "Protected Data", user: req.user });
+});
+
+
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on ${PORT}`);
+});
